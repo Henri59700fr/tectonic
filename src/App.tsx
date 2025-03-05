@@ -12,6 +12,12 @@ interface CellValue {
 interface GameState {
   cellValues: Record<string, CellValue>;
   walls: Set<string>;
+  lastAction?: {
+    type: 'addNumber' | 'removeNumber' | 'toggleWall';
+    cellId?: string;
+    wallId?: string;
+    number?: number;
+  };
 }
 
 function App() {
@@ -25,17 +31,18 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [isSettingKeys, setIsSettingKeys] = useState(true);
 
-  const saveState = useCallback(() => {
-    // Only save state if we're in unlock mode
-    if (isLocked) return;
-    
-    const newState: GameState = {
-      cellValues: JSON.parse(JSON.stringify(cellValues, (key, value) => {
-        if (value instanceof Set) return Array.from(value);
-        return value;
-      })),
-      walls: new Set(walls)
-    };
+  const saveState = useCallback((lastAction?: GameState['lastAction']) => {
+      // Only save state if we're in unlock mode
+      if (isLocked) return;
+  
+      const newState: GameState = {
+        cellValues: JSON.parse(JSON.stringify(cellValues, (key, value) => {
+          if (value instanceof Set) return Array.from(value);
+          return value;
+        })),
+        walls: new Set(walls),
+        lastAction: lastAction,
+      };
 
     setHistory(prev => {
       const newHistory = prev.slice(0, currentIndex + 1);
@@ -114,15 +121,15 @@ function App() {
         const newValues = { ...prev };
         const currentValue = newValues[cellId] || { smallValues: new Set() };
         if (currentValue.isKey) return newValues; // Don't modify key numbers
-        
+
         const newSmallValues = new Set(currentValue.smallValues);
-        
+
         if (newSmallValues.has(selectedSmallNumber)) {
           newSmallValues.delete(selectedSmallNumber);
         } else {
           newSmallValues.add(selectedSmallNumber);
         }
-        
+
         if (newSmallValues.size === 0 && !currentValue.mainValue) {
           delete newValues[cellId];
         } else {
@@ -131,13 +138,17 @@ function App() {
             smallValues: newSmallValues
           };
         }
-        
+
         return newValues;
       });
-      
+
       // Only save state if we're in unlock mode
       if (!isLocked) {
-        saveState();
+        saveState({
+          type: 'addNumber',
+          cellId: cellId,
+          number: selectedSmallNumber,
+        });
       }
     }
   }, [selectedNumber, selectedSmallNumber, saveState, isLocked, isSettingKeys]);
@@ -147,6 +158,9 @@ function App() {
   }, []);
 
   const handleReset = useCallback(() => {
+      if (!window.confirm("Are you sure you want to reset the grid?")) {
+        return;
+      }
       // Clear only non-key numbers when resetting
       setCellValues(prev => {
         const newValues: Record<string, CellValue> = {};
@@ -169,6 +183,9 @@ function App() {
     }, [saveState]);
 
   const handleStop = useCallback(() => {
+    if (!window.confirm("Are you sure you want to stop the game? All progress will be lost.")) {
+      return;
+    }
     setIsLocked(false);
     setIsSettingKeys(true);
     setCellValues({});
@@ -291,23 +308,26 @@ function App() {
           
           <main className="flex-grow max-w-7xl mx-auto px-4 py-8 flex justify-center">
             <div className="flex">
-              <div className="bg-white p-8 print:p-0 print:bg-white flex items-center justify-center p-2.5 relative">
-                                  <input
-                                                        type="text"
-                                                        className="absolute top-[20px] left-[calc(2px_-_25px)] w-[50px] h-[25px] text-white font-bold rounded-md p-1 text-center"
-                                                        style={{ backgroundColor: 'rgba(100, 100, 100, 0.5)' }}
-                                                      />
-                                  <Grid
-                                    rows={gridSize.rows}
-                                    cols={gridSize.cols}
-                                    walls={walls}
-                                    onWallToggle={handleWallToggle}
-                                    cellValues={cellValues}
-                                    onCellClick={handleCellClick}
-                                    selectedSmallNumber={selectedSmallNumber}
-                                  />
-                                </div>
-              <div className="flex flex-col items-center ml-4 bg-[#d0d0d0] p-2.5 justify-center mt-2.5 mb-2.5 rounded-md">
+              <div className="flex items-center">
+                <div className="mr-2"></div>
+                <div className="bg-white p-8 print:p-0 print:bg-white flex items-center justify-center p-2.5 relative">
+                  <input
+                    type="text"
+                    className="absolute top-[20px] left-[calc(2px_-_25px)] w-[50px] h-[25px] text-white font-bold rounded-md p-1 text-center"
+                    style={{ backgroundColor: 'rgba(100, 100, 100, 0.5)' }}
+                  />
+                  <Grid
+                    rows={gridSize.rows}
+                    cols={gridSize.cols}
+                    walls={walls}
+                    onWallToggle={handleWallToggle}
+                    cellValues={cellValues}
+                    onCellClick={handleCellClick}
+                    selectedSmallNumber={selectedSmallNumber}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col items-center ml-4 bg-white p-2.5 justify-center mt-2.5 mb-2.5 rounded-md">
                 {[1, 2, 3, 4, 5].map(number => {
                   const isSelected = selectedNumber === number;
                   return (
